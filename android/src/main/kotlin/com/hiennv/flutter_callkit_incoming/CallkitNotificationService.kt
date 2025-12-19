@@ -88,10 +88,16 @@ class CallkitNotificationService : Service() {
             getCallkitNotificationManager()?.getOnGoingCallNotification(bundle, false)
         if (callkitNotification != null) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                var foregroundServiceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    foregroundServiceType = foregroundServiceType or
+                            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
+                            ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+                }
                 startForeground(
                     callkitNotification.id,
                     callkitNotification.notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
+                    foregroundServiceType
                 )
             } else {
                 startForeground(callkitNotification.id, callkitNotification.notification)
