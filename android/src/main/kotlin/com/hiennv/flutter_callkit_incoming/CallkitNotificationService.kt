@@ -89,11 +89,13 @@ class CallkitNotificationService : Service() {
         if (callkitNotification != null) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 var foregroundServiceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
+                // Only add microphone type on Android R (API 30) and above
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     foregroundServiceType = foregroundServiceType or
-                            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
-                            ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+                            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
                 }
+                // Explicitly ensure we're only using phoneCall and microphone
+                // This prevents any implicit camera type addition on newer Android versions
                 startForeground(
                     callkitNotification.id,
                     callkitNotification.notification,
