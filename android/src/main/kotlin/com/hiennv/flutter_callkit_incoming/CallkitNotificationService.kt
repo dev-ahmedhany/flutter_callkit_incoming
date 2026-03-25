@@ -1,5 +1,4 @@
 package com.hiennv.flutter_callkit_incoming
-
 import android.annotation.SuppressLint
 import android.app.Service
 import android.content.Context
@@ -19,7 +18,6 @@ class CallkitNotificationService : Service() {
             CallkitConstants.ACTION_CALL_ACCEPT
         )
 
-
         fun startServiceWithAction(context: Context, action: String, data: Bundle?) {
             val intent = Intent(context, CallkitNotificationService::class.java).apply {
                 this.action = action
@@ -27,9 +25,9 @@ class CallkitNotificationService : Service() {
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && intent.action in ActionForeground) {
                 data?.let {
-                    if(it.getBoolean(CallkitConstants.EXTRA_CALLKIT_CALLING_SHOW, true)) {
+                    if (it.getBoolean(CallkitConstants.EXTRA_CALLKIT_CALLING_SHOW, true)) {
                         ContextCompat.startForegroundService(context, intent)
-                    }else {
+                    } else {
                         context.startService(intent)
                     }
                 }
@@ -45,91 +43,95 @@ class CallkitNotificationService : Service() {
 
     }
 
-    // Get notification manager dynamically to handle plugin lifecycle properly
-    private fun getCallkitNotificationManager(): CallkitNotificationManager? {
-        return FlutterCallkitIncomingPlugin.getInstance()?.getCallkitNotificationManager()
-    }
+    private var localSoundPlayerManager: CallkitSoundPlayerManager? = null
+    private var localNotificationManager: CallkitNotificationManager? = null
 
+    private fun getCallkitNotificationManager(): CallkitNotificationManager {
 
-    override fun onCreate() {
-        super.onCreate()
+        FlutterCallkitIncomingPlugin.getInstance()
+            ?.getCallkitNotificationManager()
+            ?.let { return it }
+        localNotificationManager?.let { return it }
+        val soundManager = localSoundPlayerManager
+            ?: CallkitSoundPlayerManager(applicationContext).also {
+                localSoundPlayerManager = it
+            }
+        return CallkitNotificationManager(applicationContext, soundManager).also {
+            localNotificationManager = it
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action === CallkitConstants.ACTION_CALL_START) {
-            intent.getBundleExtra(CallkitConstants.EXTRA_CALLKIT_INCOMING_DATA)
-                ?.let {
-                    if(it.getBoolean(CallkitConstants.EXTRA_CALLKIT_CALLING_SHOW, true)) {
-                        getCallkitNotificationManager()?.createNotificationChanel(it)
-                        showOngoingCallNotification(it)
-                    }else {
-                        stopSelf()
-                    }
+
+        val data = intent?.getBundleExtra(CallkitConstants.EXTRA_CALLKIT_INCOMING_DATA)
+            ?: run {
+                stopSelf(startId)
+                return START_NOT_STICKY
+            }
+        when (intent.action) {
+            CallkitConstants.ACTION_CALL_START -> {
+                if (data.getBoolean(CallkitConstants.EXTRA_CALLKIT_CALLING_SHOW, true)) {
+                    getCallkitNotificationManager().createNotificationChanel(data)
+                    showOngoingCallNotification(data, startId)
+                } else {
+                    stopSelf(startId)
                 }
-        }
-        if (intent?.action === CallkitConstants.ACTION_CALL_ACCEPT) {
-            intent.getBundleExtra(CallkitConstants.EXTRA_CALLKIT_INCOMING_DATA)
-                ?.let {
-                    getCallkitNotificationManager()?.clearIncomingNotification(it, true)
-                    if (it.getBoolean(CallkitConstants.EXTRA_CALLKIT_CALLING_SHOW, true)) {
-                        showOngoingCallNotification(it)
-                    }else {
-                        stopSelf()
-                    }
+            }
+            CallkitConstants.ACTION_CALL_ACCEPT -> {
+                getCallkitNotificationManager().clearIncomingNotification(data, true)
+                if (data.getBoolean(CallkitConstants.EXTRA_CALLKIT_CALLING_SHOW, true)) {
+                    showOngoingCallNotification(data, startId)
+                } else {
+                    stopSelf(startId)
                 }
+            }
+            else -> stopSelf(startId)
         }
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     @SuppressLint("MissingPermission")
-    private fun showOngoingCallNotification(bundle: Bundle) {
-
+    private fun showOngoingCallNotification(bundle: Bundle, startId: Int) {
         val callkitNotification =
-            getCallkitNotificationManager()?.getOnGoingCallNotification(bundle, false)
-        if (callkitNotification != null) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                var foregroundServiceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
-                // Only add microphone type on Android R (API 30) and above
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    foregroundServiceType = foregroundServiceType or
-                            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            getCallkitNotificationManager().getOnGoingCallNotification(bundle, false)
+                ?: run {
+                    stopSelf(startId)
+                    return
                 }
-                // Explicitly ensure we're only using phoneCall and microphone
-                // This prevents any implicit camera type addition on newer Android versions
-                startForeground(
-                    callkitNotification.id,
-                    callkitNotification.notification,
-                    foregroundServiceType
-                )
-            } else {
-                startForeground(callkitNotification.id, callkitNotification.notification)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            var foregroundServiceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                foregroundServiceType = foregroundServiceType or
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             }
+            startForeground(
+                callkitNotification.id,
+                callkitNotification.notification,
+                foregroundServiceType
+            )
+        } else {
+            startForeground(callkitNotification.id, callkitNotification.notification)
         }
     }
 
-
     override fun onDestroy() {
+        localNotificationManager?.destroy()
+        localNotificationManager = null
+        localSoundPlayerManager = null
         super.onDestroy()
-        // Don't destroy the notification manager here as it's shared across the app
-        // The plugin will handle cleanup when all engines are detached
     }
 
     override fun onBind(p0: Intent?): IBinder? {
         return null
     }
 
-
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
-        }else {
+        } else {
             stopForeground(true)
         }
         stopSelf()
     }
-
-
-
 }
-
