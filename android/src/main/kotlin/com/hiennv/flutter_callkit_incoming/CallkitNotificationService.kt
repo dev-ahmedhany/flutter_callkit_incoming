@@ -159,7 +159,7 @@ class CallkitNotificationService : Service() {
             CallkitConstants.EXTRA_CALLKIT_CALLING_ID,
             data.getString(CallkitConstants.EXTRA_CALLKIT_ID, "callkit_incoming")
         )
-        return ("ongoing_$callingId").hashCode()
+        return callingId.hashCode()
     }
 
     override fun onDestroy() {
