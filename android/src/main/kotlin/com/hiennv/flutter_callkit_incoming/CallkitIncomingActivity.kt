@@ -19,6 +19,7 @@ import android.view.animation.AnimationUtils
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.view.WindowCompat
 import com.hiennv.flutter_callkit_incoming.widgets.RippleRelativeLayout
 import de.hdodenhof.circleimageview.CircleImageView
 import kotlin.math.abs
@@ -125,38 +126,14 @@ class CallkitIncomingActivity : Activity() {
     }
 
     private fun transparentStatusAndNavigation() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT && Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
-            setWindowFlag(
-                WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS
-                        or WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION, true
-            )
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            setWindowFlag(
-                (WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS
-                        or WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION), false
-            )
-            window.statusBarColor = Color.TRANSPARENT
-            window.navigationBarColor = Color.TRANSPARENT
-        }
+        // Edge-to-edge: content draws behind the status + navigation bars.
+        // On Android 15 (API 35) this is the default; on older releases
+        // WindowCompat sets the equivalent legacy flags (systemUiVisibility
+        // + FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS). Replaces the deprecated
+        // setStatusBarColor / setNavigationBarColor / systemUiVisibility
+        // calls flagged by Play Console for Android 15 compatibility.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
     }
-
-    private fun setWindowFlag(bits: Int, on: Boolean) {
-        val win: Window = window
-        val winParams: WindowManager.LayoutParams = win.attributes
-        if (on) {
-            winParams.flags = winParams.flags or bits
-        } else {
-            winParams.flags = winParams.flags and bits.inv()
-        }
-        win.attributes = winParams
-    }
-
 
     private fun incomingData(intent: Intent) {
         val data = intent.extras?.getBundle(CallkitConstants.EXTRA_CALLKIT_INCOMING_DATA)
