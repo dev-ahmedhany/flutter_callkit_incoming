@@ -60,10 +60,32 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
         }
     }
     
-    public static func sharePluginWithRegister(with registrar: FlutterPluginRegistrar) {
-        if(sharedInstance == nil){
-            sharedInstance = SwiftFlutterCallkitIncomingPlugin(messenger: registrar.messenger())
+    /// Create `sharedInstance` before any Flutter engine exists.
+    ///
+    /// Apps that adopt the `UISceneDelegate` lifecycle MUST call this from
+    /// `application:didFinishLaunchingWithOptions:` if they handle PushKit VoIP
+    /// pushes. Under UIScene, Flutter defers plugin registration until a scene
+    /// connects — but a VoIP push relaunches a terminated app *headlessly*: no
+    /// scene, no engine, no registration. `sharedInstance` would then still be nil
+    /// when `pushRegistry(_:didReceiveIncomingPushWith:for:completion:)` fires, the
+    /// call would never be reported to CallKit, and iOS would terminate the app and
+    /// eventually stop delivering VoIP pushes altogether.
+    ///
+    /// This is the pattern Flutter prescribes for APIs that must be configured
+    /// before app launch finishes — the plugin exposes a public method the app
+    /// calls directly. See
+    /// https://docs.flutter.dev/release/breaking-changes/uiscenedelegate
+    ///
+    /// Idempotent, and order-independent with respect to `register(with:)`, which
+    /// attaches the method/event channels to this same instance.
+    @objc public static func setup() {
+        if sharedInstance == nil {
+            sharedInstance = SwiftFlutterCallkitIncomingPlugin()
         }
+    }
+
+    public static func sharePluginWithRegister(with registrar: FlutterPluginRegistrar) {
+        setup()
         sharedInstance.shareHandlers(with: registrar)
     }
     
@@ -79,8 +101,15 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
         return FlutterEventChannel(name: "flutter_callkit_incoming_events", binaryMessenger: messenger)
     }
     
-    public init(messenger: FlutterBinaryMessenger) {
+    public override init() {
         callManager = CallManager()
+        super.init()
+    }
+
+    /// Retained for source compatibility. The messenger was never used — channels
+    /// are wired in `shareHandlers(with:)` from the registrar instead.
+    public convenience init(messenger: FlutterBinaryMessenger) {
+        self.init()
     }
     
     private func shareHandlers(with registrar: FlutterPluginRegistrar) {
